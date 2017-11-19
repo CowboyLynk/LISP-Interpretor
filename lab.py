@@ -8,6 +8,9 @@ class EvaluationError(Exception):
 	pass
 
 
+# ==============================
+# MARK: All the code for parsing
+# ==============================
 def tokenize(source):
 	"""
 	Splits an input string into meaningful tokens (left parens, right parens,
@@ -51,9 +54,9 @@ def tokenize(source):
 	return tokens
 
 
-# Helper
 def find_matching_paren(L):
 	"""
+	This is a helper function
 	:param L: A list of tokens with the start being the first parenthesis
 	:return: the index of the matching parenthesis
 	"""
@@ -155,6 +158,9 @@ def parse(tokens):
 	return rec_parse(tokens)
 
 
+# =======================
+# MARK: builtin functions
+# =======================
 class Builtins:
 
 	@staticmethod
@@ -173,7 +179,7 @@ class Builtins:
 
 	@staticmethod
 	def eq(args: list):
-		for arg, i in enumerate(args):
+		for i, arg in enumerate(args):
 			for j in range(i+1, len(args)):
 				arg2 = args[j]
 				if arg != arg2:
@@ -313,6 +319,10 @@ class Builtins:
 			result = func([result, elt])
 		return result
 
+	@staticmethod
+	def begin(args):
+		return args[-1]
+
 carlae_builtins = {
 	'+': sum,
 	'-': lambda args: -args[0] if len(args) == 1 else (args[0] - sum(args[1:])),
@@ -333,11 +343,15 @@ carlae_builtins = {
 	"map": Builtins.map,
 	"filter": Builtins.filter,
 	"reduce": Builtins.reduce,
+	"begin": Builtins.begin,
 	"#t": True,
 	"#f": False
 }
 
 
+# ============================================
+# MARK: contains all the builtin objects types
+# ============================================
 class Env:
 
 	def __init__(self, parent=carlae_builtins):
@@ -348,7 +362,13 @@ class Env:
 		self.symbols[sym] = value
 
 	def set_bang(self, sym, value):
-		pass
+		if sym in self:
+			self.symbols[sym] = value
+		else:
+			try:
+				self.parent.set_bang(sym, value)
+			except:
+				raise EvaluationError
 
 	def __contains__(self, item):
 		return item in self.symbols
@@ -445,6 +465,19 @@ class LinkedList:
 			current = current.get_next()
 
 
+# ===============================================================
+# MARK: all the the evaluation code for interpreting the language
+# ===============================================================
+def evaluate_file(file_name, env=None):
+	if not env:
+		env = Env()
+	file = open(file_name).read()
+	print(file)
+	tokens = tokenize(file)
+	expression = parse(tokens)
+	return evaluate(expression, env)
+
+
 def result_and_env(tree, env=None):
 	if not env:
 		env = Env()
@@ -506,6 +539,15 @@ def evaluate(tree, env=None):
 			if evaluate(arg, env):
 				return True
 		return False
+	elif tree[0] == "let":
+		new_env = Env(env)
+		for assignment in tree[1]:  # sets all the temporary assignments for the let
+			new_env.define_symbol(assignment[0], evaluate(assignment[1], env))
+		return evaluate(tree[2], new_env)
+	elif tree[0] == "set!":
+		val = evaluate(tree[2], env)
+		env.set_bang(tree[1], val)
+		return val
 	# checks the case where if the first element is a function
 	elif isinstance(tree[0], list):
 		try:
@@ -528,6 +570,9 @@ if __name__ == '__main__':
 
 	# REPL Code
 	repl_env = Env()
+	# runs the pre-defined functions in the text files first
+	for file_name in sys.argv[1:]:
+		evaluate_file(file_name, repl_env)
 	while True:
 		user_in = input("in> ")
 		if user_in == "QUIT":
